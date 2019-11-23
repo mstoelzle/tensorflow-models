@@ -25,6 +25,8 @@ import tensorflow as tf
 from object_detection import model_hparams
 from object_detection import model_lib
 
+from pprint import pprint
+
 flags.DEFINE_string(
     'model_dir', None, 'Path to output model directory '
     'where event and checkpoint files will be written.')
@@ -55,6 +57,9 @@ flags.DEFINE_boolean(
 )
 FLAGS = flags.FLAGS
 
+print("Debug FLAGS:")
+pprint(FLAGS)
+
 
 def main(unused_argv):
   flags.mark_flag_as_required('model_dir')
@@ -75,6 +80,9 @@ def main(unused_argv):
   eval_on_train_input_fn = train_and_eval_dict['eval_on_train_input_fn']
   predict_input_fn = train_and_eval_dict['predict_input_fn']
   train_steps = train_and_eval_dict['train_steps']
+
+  print("Debug TrainAndEvalDict:")
+  pprint(train_and_eval_dict)
 
   if FLAGS.checkpoint_dir:
     if FLAGS.eval_training_data:
@@ -100,6 +108,9 @@ def main(unused_argv):
         predict_input_fn,
         train_steps,
         eval_on_train_data=False)
+
+    print("Debug TrainSpecs:")
+    pprint(train_spec)
 
     # Currently only a single Eval Spec is allowed.
     tf.estimator.train_and_evaluate(estimator, train_spec, eval_specs[0])
