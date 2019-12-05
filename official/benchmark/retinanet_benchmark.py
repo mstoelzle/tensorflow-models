@@ -32,6 +32,7 @@ import tensorflow as tf
 
 from official.benchmark import bert_benchmark_utils as benchmark_utils
 from official.utils.flags import core as flags_core
+from official.utils.testing import benchmark_wrappers
 from official.vision.detection import main as detection
 
 TMP_DIR = os.getenv('TMPDIR')
@@ -151,6 +152,7 @@ class RetinanetAccuracy(RetinanetBenchmarkBase):
   def __init__(self, output_dir=TMP_DIR, **kwargs):
     super(RetinanetAccuracy, self).__init__(output_dir=output_dir)
 
+  @benchmark_wrappers.enable_runtime_flags
   def _run_and_report_benchmark(self, min_ap=0.325, max_ap=0.35):
     """Starts RetinaNet accuracy benchmark test."""
 
@@ -256,6 +258,27 @@ class RetinanetBenchmarkReal(RetinanetAccuracy):
     FLAGS.params_override = json.dumps(params)
     FLAGS.model_dir = self._get_model_dir('real_benchmark_1_gpu_coco')
     FLAGS.strategy_type = 'one_device_gpu'
+    # Use negative value to avoid saving checkpoints.
+    FLAGS.save_checkpoint_freq = -1
+    if self.timer_callback is None:
+      logging.error('Cannot measure performance without timer callback')
+    else:
+      self._run_and_report_benchmark()
+
+  @flagsaver.flagsaver
+  def benchmark_xla_1_gpu_coco(self):
+    """Run RetinaNet model accuracy test with 1 GPU and XLA enabled."""
+    self.num_gpus = 1
+    self._setup()
+    params = copy.deepcopy(self.params_override)
+    params['train']['batch_size'] = 8
+    params['train']['total_steps'] = 200
+    params['train']['iterations_per_loop'] = 1
+    params['eval']['eval_samples'] = 8
+    FLAGS.params_override = json.dumps(params)
+    FLAGS.model_dir = self._get_model_dir('real_benchmark_1_gpu_coco')
+    FLAGS.strategy_type = 'one_device_gpu'
+    FLAGS.enable_xla = True
     # Use negative value to avoid saving checkpoints.
     FLAGS.save_checkpoint_freq = -1
     if self.timer_callback is None:

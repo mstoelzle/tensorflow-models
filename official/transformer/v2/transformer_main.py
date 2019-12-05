@@ -159,6 +159,7 @@ class TransformerTask(object):
     params["repeat_dataset"] = None
     params["dtype"] = flags_core.get_tf_dtype(flags_obj)
     params["enable_metrics_in_training"] = flags_obj.enable_metrics_in_training
+    params["steps_between_evals"] = flags_obj.steps_between_evals
 
     self.distribution_strategy = distribution_utils.get_distribution_strategy(
         distribution_strategy=flags_obj.distribution_strategy,
@@ -188,7 +189,7 @@ class TransformerTask(object):
           "mixed_float16", loss_scale=loss_scale)
       tf.compat.v2.keras.mixed_precision.experimental.set_policy(policy)
 
-    if params["dtype"] == tf.bfloat16:
+    elif params["dtype"] == tf.bfloat16:
       policy = tf.compat.v2.keras.mixed_precision.experimental.Policy(
           "mixed_bfloat16")
       tf.compat.v2.keras.mixed_precision.experimental.set_policy(policy)
@@ -387,7 +388,7 @@ class TransformerTask(object):
                                      params["hidden_size"],
                                      params["learning_rate_warmup_steps"])
     scheduler_callback = optimizer.LearningRateScheduler(sfunc, init_steps)
-    callbacks = misc.get_callbacks()
+    callbacks = misc.get_callbacks(params["steps_between_evals"])
     callbacks.append(scheduler_callback)
     ckpt_full_path = os.path.join(cur_log_dir, "cp-{epoch:04d}.ckpt")
     callbacks.append(tf.keras.callbacks.ModelCheckpoint(ckpt_full_path,

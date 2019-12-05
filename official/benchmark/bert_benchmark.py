@@ -32,9 +32,9 @@ import tensorflow as tf
 
 from official.benchmark import bert_benchmark_utils as benchmark_utils
 from official.nlp import bert_modeling as modeling
-from official.nlp.bert import input_pipeline
 from official.nlp.bert import run_classifier
 from official.utils.misc import distribution_utils
+from official.utils.testing import benchmark_wrappers
 
 # pylint: disable=line-too-long
 PRETRAINED_CHECKPOINT_PATH = 'gs://cloud-tpu-checkpoints/bert/keras_bert/uncased_L-24_H-1024_A-16/bert_model.ckpt'
@@ -79,18 +79,16 @@ class BertClassifyBenchmarkBase(benchmark_utils.BertBenchmarkBase):
     steps_per_loop = 1
 
     max_seq_length = input_meta_data['max_seq_length']
-    train_input_fn = functools.partial(
-        input_pipeline.create_classifier_dataset,
+    train_input_fn = run_classifier.get_dataset_fn(
         FLAGS.train_data_path,
-        seq_length=max_seq_length,
-        batch_size=FLAGS.train_batch_size)
-    eval_input_fn = functools.partial(
-        input_pipeline.create_classifier_dataset,
+        max_seq_length,
+        FLAGS.train_batch_size,
+        is_training=True)
+    eval_input_fn = run_classifier.get_dataset_fn(
         FLAGS.eval_data_path,
-        seq_length=max_seq_length,
-        batch_size=FLAGS.eval_batch_size,
-        is_training=False,
-        drop_remainder=False)
+        max_seq_length,
+        FLAGS.eval_batch_size,
+        is_training=False)
     run_classifier.run_bert_classifier(
         strategy,
         bert_config,
@@ -130,6 +128,7 @@ class BertClassifyBenchmarkReal(BertClassifyBenchmarkBase):
     self.num_steps_per_epoch = 110
     self.num_epochs = 1
 
+  @benchmark_wrappers.enable_runtime_flags
   def _run_and_report_benchmark(self,
                                 training_summary_path,
                                 min_accuracy=0,
@@ -308,6 +307,7 @@ class BertClassifyAccuracy(BertClassifyBenchmarkBase):
 
     super(BertClassifyAccuracy, self).__init__(output_dir=output_dir)
 
+  @benchmark_wrappers.enable_runtime_flags
   def _run_and_report_benchmark(self,
                                 training_summary_path,
                                 min_accuracy=0.84,
