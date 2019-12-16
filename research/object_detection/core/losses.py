@@ -269,9 +269,19 @@ class WeightedSigmoidClassificationLoss(Loss):
           ops.indices_to_dense_vector(class_indices,
                                       tf.shape(prediction_tensor)[2]),
           [1, 1, -1])
+      
+    ## Class weight modification
+    num_anchor = weights.get_shape().as_list()[1]
+    class_weights = tf.constant([[1.0, 5.0, 5.0, 3.0, 1.0, 3.0, 1.0, 1.0]])
+    total = tf.reduce_sum(class_weights)
+    class_weights = class_weights/total
+    class_weights = tf.tile(class_weights,[num_anchor,1])
+    class_weights = tf.expand_dims(class_weights,0)
+    ####
+    
     per_entry_cross_ent = (tf.nn.sigmoid_cross_entropy_with_logits(
         labels=target_tensor, logits=prediction_tensor))
-    return per_entry_cross_ent * weights
+    return per_entry_cross_ent * weights * class_weights
 
 
 class SigmoidFocalClassificationLoss(Loss):
