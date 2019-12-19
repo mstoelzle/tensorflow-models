@@ -38,6 +38,11 @@ from object_detection.core import box_list
 from object_detection.core import box_list_ops
 from object_detection.utils import ops
 
+import cv2
+import json
+import numpy as np
+import os
+
 slim = tf.contrib.slim
 
 
@@ -174,7 +179,7 @@ class WeightedSmoothL1LocalizationLoss(Loss):
       loss: a float tensor of shape [batch_size, num_anchors] tensor
         representing the value of the loss function.
     """
-          
+
     return tf.reduce_sum(tf.losses.huber_loss(
         target_tensor,
         prediction_tensor,
@@ -244,44 +249,51 @@ class WeightedSigmoidClassificationLoss(Loss):
           ops.indices_to_dense_vector(class_indices,
                                       tf.shape(prediction_tensor)[2]),
           [1, 1, -1])
-      
-    ## Class weight modification
-    num_anchor = weights.get_shape().as_list()[1]
-    class_weights = tf.constant([[1.0, 5.0, 5.0, 3.0, 1.0, 3.0, 1.0, 1.0]])
-    total = tf.reduce_sum(class_weights)
-    class_weights = class_weights/total
-    class_weights = tf.tile(class_weights,[num_anchor,1])
-    class_weights = tf.expand_dims(class_weights,0)
-    ####
-    
-    # Adjusted localization weight
-    import json
-    import numpy as np
-    import cv2
 
-    with open('/workdir/config/dt_locational_weights.json') as json_file:
-        data = json.load(json_file)
 
-    """For image resizer 320 x 320, num_anchors = 2034. More than 90% objects are detected in the first 1160 anchors.
-    Top left image pixel corresponds to anchor 0, top right to anchor 57, bottom right to anchor 1159.
-    Not tested in detailed, bottom left to anchor 1080-1150, middle to anchor 500-700.
-    With this approximation, original localization weight of dimension 640x480 px is resized to 58x20.
-    """
-    data_array = np.asarray(data)
-    resized = cv2.resize(data_array, dsize=(20, 58), interpolation=cv2.INTER_CUBIC)
-    flattened = resized.flatten()
-    flattened = flattened.tolist()
+    # Class weight modification
+    class_weight_mod = bool(os.getenv('CLASSIFICATION_LOSS_CLASS_WEIGHT_MOD', True))
+    if class_weight_mod:
+        class_weights = tf.constant([[1.0, 5.0, 5.0, 3.0, 1.0, 3.0, 1.0, 1.0]])
+        num_anchor = weights.get_shape().as_list()[1]
+        total = tf.reduce_sum(class_weights)
+        class_weights = class_weights/total
+        class_weights = tf.tile(class_weights, [num_anchor, 1])
+        class_weights = tf.expand_dims(class_weights, 0)
 
-    # Apply adjusted localization only to the first 1160 anchors.
-    ones = [1.] * (2034 - len(flattened))
-    localization_list = flattened + ones
-    localization_weight = tf.convert_to_tensor(localization_list)
-    localization_weight = tf.expand_dims(localization_weight, axis=-1)    
-    
+    # Locational weight modification
+    locational_weight_mod = bool(os.getenv('CLASSIFICATION_LOSS_LOCATIONAL_WEIGHT_MOD', True))
+    if locational_weight_mod:
+        with open('/workdir/config/dt_locational_weights.json') as json_file:
+            data = json.load(json_file)
+
+        """For image resizer 320 x 320, num_anchors = 2034. More than 90% objects are detected in the first 1160 anchors.
+        Top left image pixel corresponds to anchor 0, top right to anchor 57, bottom right to anchor 1159.
+        Not tested in detailed, bottom left to anchor 1080-1150, middle to anchor 500-700.
+        With this approximation, original localization weight of dimension 640x480 px is resized to 58x20.
+        """
+        data_array = np.asarray(data)
+        resized = cv2.resize(data_array, dsize=(20, 58), interpolation=cv2.INTER_CUBIC)
+        flattened = resized.flatten()
+        flattened = flattened.tolist()
+
+        # Apply adjusted localization only to the first 1160 anchors.
+        ones = [1.] * (2034 - len(flattened))
+        locational_list = flattened + ones
+        locational_weights = tf.convert_to_tensor(locational_list)
+        locational_weights = tf.expand_dims(locational_weights, axis=-1)
+
     per_entry_cross_ent = (tf.nn.sigmoid_cross_entropy_with_logits(
         labels=target_tensor, logits=prediction_tensor))
-    return per_entry_cross_ent * weights * class_weights * localization_weight
 
+    loss = per_entry_cross_ent * weights
+    if class_weight_mod:
+        loss = loss*class_weights
+
+    if locational_weight_mod:
+        loss = loss*locational_weights
+
+    return loss
 
 class SigmoidFocalClassificationLoss(Loss):
   """Sigmoid focal cross entropy loss.
